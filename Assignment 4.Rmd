@@ -1,0 +1,71 @@
+---
+title: "Assignment 4"
+author: "Chi Zhang"
+date: "08/04/2021"
+output: word_document
+---
+```{r}
+library(dplyr)
+library(httr)
+library(tm)
+library(wordVectors)
+library(word2vec)
+library(genius)
+
+#download wikipedia file
+temp <- tempfile()
+download.file("http://mattmahoney.net/dc/text8.zip", destfile = temp)
+(file_list <- as.character(unzip(temp, list = TRUE)$Name))
+unzip(temp)
+unlink(temp) # Delete temp file
+file.rename(from="text8",to="text8.txt") # append an extension to the filename
+
+#train word2vec models. Setting vectors to be larger than 100 is likely result in a RStudio abortion, so I can run the code with a smaller vector size.
+T1 = Sys.time()
+wiki_skip <- train_word2vec('text8.txt', output_file = "wiki_skip.bin", vectors=
+                          75, window = 12, cbow= 0, threads = 8 ,iter = 5, force = TRUE)
+wiki_cbow <- train_word2vec('text8.txt', output_file = "wiki_cbow.bin", vectors=
+                              75, window = 12, cbow= 1, iter = 5, threads = 8 , force = TRUE)
+(Elapsed4 = T1-Sys.time())
+
+# Japanese is spoken Japan, and it could also describe something related to Japan. Thus, the analogy below should return either countries where English (Canada, the USA, the UK, Australia, etc.) is spoken or England, as English may refer people living in England,
+wiki_cbow %>% closest_to(~ "japan" - "japanese" + "english")
+wiki_skip %>% closest_to(~ "japan" - "japanese" + "english")
+
+# Since American is not a language, the analogy below should return terms more closely related to the USA
+wiki_cbow %>% closest_to(~ "japan" - "japanese" + "american")
+wiki_skip %>% closest_to(~ "japan" - "japanese" + "american")
+
+# Lennon to Beatles should be somewhat as Mustaine to Megadeth, but unfortunately not both model suggest this analogy.
+wiki_cbow %>% closest_to(~ "beatles" - "lennon" + "mustaine")
+wiki_skip %>% closest_to(~ "beatles" - "lennon" + "mustaine")
+```
+
+```{r}
+ingredients = c("beef", "carrot", "bread", "egg", "milk", "beer", "yeast")
+term_set = lapply(ingredients,function(ingredient) {
+  nearest_words = wiki_cbow %>%closest_to(wiki_cbow[[ingredient]],50)
+  nearest_words$word}) %>% unlist
+
+terms = lapply(ingredients,function(ingredient) {
+  nearest_words = wiki_cbow %>%closest_to(wiki_cbow[[ingredient]],50)
+  nearest_words$word})
+
+terms %>% unlist()
+
+# store the 50*7 words in a dataframe
+words = as.data.frame(matrix(unlist(terms), nrow=length(unlist(terms[1]))))
+colnames(words) = ingredients
+words
+
+#plot the dendrogram output
+subset = wiki_cbow[[term_set,average=F]]
+subset %>% cosineDist(subset) %>% as.dist %>% hclust %>% plot
+
+subset = wiki_skip[[term_set,average=F]]
+subset %>% cosineDist(subset) %>% as.dist %>% hclust %>% plot
+
+
+
+```
+

@@ -1,0 +1,163 @@
+---
+title: "Assignment 2"
+author: "Chi Zhang"
+date: "17/03/2021"
+output: word_document
+---
+
+1.
+```{r}
+load("Beatles Song Album Year.Rdata")
+library(tidytext)
+library(dplyr)
+library(rcompanion)
+library(broom)
+set.seed(19971112)
+
+#get the list of albums by the Beatles sorted by released date.
+factored_album <- Lyric.album.year.keep[order(Lyric.album.year.keep$year),] %>% select(album) %>% unique()
+
+
+#get the number of unique words for each song
+beatles_data <- Lyric.album.year.keep %>% mutate(words = 
+  sapply(Lyric.album.year.keep$track_title, function(x) nrow(filter(Lyric.album.year.keep, track_title == x) %>% unnest_tokens(output = words, input = songlyric, token = 'words') %>% count(words)
+)))
+
+#the filtered data only contains the first album and the last album
+filtered_data <- filter(beatles_data, album %in% c(factored_album[1,], factored_album[nrow(factored_album),]))
+
+test_statistic <- function(data)
+{
+  return (tidy(anova(lm(words ~ album, data = data)))$statistic[1])
+}
+
+permutation_test <- function(data, num_permutation=10000)
+{
+  original_test_statistic <- test_statistic(data)
+  sampled_permutation <- numeric(num_permutation)
+  for(i in 1:num_permutation)
+  {
+    Index = sample(1:nrow(data),size = nrow(data), replace = FALSE)
+    data[Index,]
+    sampled_permutation[i] = data %>% mutate(album = album[Index]) %>% test_statistic()
+    if(i %% 1000 == 0)
+      print(i)
+  }
+  hist(sampled_permutation)
+  abline(v=original_test_statistic ,lwd=3,col="red")
+  return(sum(sampled_permutation>original_test_statistic)/num_permutation)
+}
+
+
+# consider the two-sample case. H0: the mean of the unique words of each song in the first album is the same as that in the last album vs H1: the mean of the unique words of each song in the first album is not the same as that in the last album
+permutation_test(filtered_data)
+
+# we can also use the pairwisePermutationTest funtion in rcompanion package to perform permutation test of the filtered data. Two p-values are shown to be very close to each other (0.082 vs 0.0855). The P-value suggests a marginal evidence against the null hypothesis. The plot shows that the observed origical test statistic is somewhat extreme, which is in align with our findings from p-value.
+pairwisePermutationTest(words ~ album, data = filtered_data)
+
+# now consider the 12-sample case. H0: the mean of the unique words of each song in each album is the same as that in other albums vs the mean of the unique words of each song in each album is not the same as that in other albums. The p-value 0.0013 is small so that the null hypothesis is likely to be rejected. The plot shows that the observed origical test statistic is very extreme, which supports our confirmation that the null should be rejected.
+permutation_test(beatles_data)
+
+```
+2. 
+```{r}
+library(MASS)
+set.seed(19971112)
+
+medv <- Boston$medv
+# a) Based on this data set, provide an estimate for the population mean of medv μ. 
+mu <- mean(medv)
+mu
+
+# b)  Provide an estimate of the standard error of μ.
+std_err <- sqrt(var(medv)/length(medv))
+std_err
+
+# c)  Now estimate the standard error of μ using the bootstrap. How does this compare to your answer from (b)?
+num_boot <- 10000
+n <- length(medv)
+booted <- numeric(num_boot)
+for(i in 1:num_boot)
+{
+  index <- sample(1:n, size = n, replace = TRUE)
+  booted_data <- medv[index]
+  booted[i] <- sqrt(var(booted_data)/n)
+}
+sqrt(var(booted))
+booted_result <- mean(booted)
+booted_result
+
+# the boot-strapped result 0.4082875 is very close to the estimated in part (b), 0.4088611.
+
+# d) Based on your bootstrap estimate from (c), provide a 95 % confidence interval for the mean of medv. Compare it to the results obtained using t.test(Boston$medv).
+mu + c(-1,1) * qt(.975, n) * booted_result
+
+t.test(Boston$medv)$conf.int
+
+# the boot-strapped confidence interval is close to the t interval obtained from t test.
+
+# e) Based on this dataset, provide an estimate, for the median value of medv in the population: μ_med. the std err of the estimate can also be found.
+mu_med <- median(medv)
+mu_med
+
+num_boot <- 10000
+n <- length(medv)
+booted <- numeric(num_boot)
+for(i in 1:num_boot)
+{
+  index <- sample(1:n, size = n, replace = TRUE)
+  booted_data <- medv[index]
+  booted[i] <- median(booted_data)
+}
+booted_median <- mean(booted)
+booted_median
+sqrt(var(booted))
+
+# f) We now would like to produce a confidence interval for . Unfortunately, there is no simple formula for computing the standard error of the median. Instead, estimate use the bootstrap to develop a CI. 
+mu_med + c(-1,1) * qt(.975, n) * sqrt(var(booted))
+```
+3.
+```{r}
+library(genius)
+library(stringr)
+library(tidytext)
+library(dplyr)
+lyrics <- genius_lyrics("The Tragically Hip", "Ahead By A Century'")
+while(nrow(lyrics)==0)
+{
+  Sys.sleep(3)
+  lyrics <- genius_lyrics("The Tragically Hip", "Ahead By A Century'")
+}
+
+# a)Return song lines mentioning "our" but not "your"
+lyrics$lyric[str_detect(lyrics$lyric, pattern = '\\bour\\b')]
+
+# b) Change the Corus from “Ahead by a century” to “Behind by a century”
+lyrics$lyrics <- gsub(pattern = "ahead by a century", "behind by a century",x=lyrics$lyric)
+
+# c) Replace ”our” with “my” and “you/your” with “they/their/them”. Make sure that grammar is correctly altered if needed. Return just the (now modified) lines containing the words {my, they, them, their}
+
+lyrics$lyrics <- gsub(pattern = "\\bour\\b", "my",x=lyrics$lyrics)
+
+
+lyrics$lyrics <- gsub(pattern = "\\byour\\b", "their",x=lyrics$lyrics)
+
+# capitalized you starts a sentence and it should not be the object noun, so it should be replaced with they
+
+lyrics$lyrics <- gsub(pattern = "\\bYou\\b", "they", x=lyrics$lyrics)
+
+# we can find that there is only one occurence of "you", which is the last line of the lyrics, so we could break down the last line using ngram = 2 to analyze the relationship between "you" and its neighboring words.
+
+bigram <- unnest_tokens(filter(lyrics, line == 33), output = ngrams,input = lyric, token = "ngrams", n = 2)
+bigram$ngrams[str_detect(bigram$ngrams, pattern = '\\byou\\b')]
+
+# obviously, "you is" is not grammartically correct and "disappointing you" makes sense as it treats you as an object nouwn. Therefore, you should be replaced by them here.
+lyrics$lyrics <- gsub(pattern = "\\byou\\b", "them", x=lyrics$lyrics)
+lyrics$lyrics[str_detect(lyrics$lyrics, "my|they|them|their")]
+
+
+# d) Count the number of times the song title is mentioned in the song. 9 times. 
+lyrics %>% unnest_tokens( output = ngrams,input = lyric, token = "ngrams", n = 4) %>% count(ngrams) %>% subset(ngrams == "ahead by a century")
+
+```
+
